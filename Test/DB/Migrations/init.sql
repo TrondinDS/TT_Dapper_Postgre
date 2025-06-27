@@ -1,0 +1,26 @@
+CREATE TABLE Company (
+  Id   SERIAL PRIMARY KEY,
+  Name VARCHAR(200) NOT NULL
+);
+
+CREATE TABLE Department (
+  Id         SERIAL PRIMARY KEY,
+  CompanyId  INTEGER NOT NULL REFERENCES Company(Id) ON DELETE CASCADE,
+  Name       VARCHAR(200) NOT NULL,
+  Phone      VARCHAR(50)
+);
+
+CREATE TABLE Employee (
+  Id           SERIAL PRIMARY KEY,
+  Name         VARCHAR(100) NOT NULL,
+  Surname      VARCHAR(100) NOT NULL,
+  Phone        VARCHAR(50),
+  CompanyId    INTEGER NOT NULL REFERENCES Company(Id) ON DELETE CASCADE,
+  DepartmentId INTEGER NOT NULL REFERENCES Department(Id) ON DELETE SET NULL
+);
+
+CREATE TABLE Passport (
+  EmployeeId INTEGER PRIMARY KEY REFERENCES Employee(Id) ON DELETE CASCADE,
+  Type       VARCHAR(50) NOT NULL,
+  Number     VARCHAR(50) NOT NULL
+);

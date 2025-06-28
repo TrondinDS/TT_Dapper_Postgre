@@ -7,5 +7,6 @@
         Task<int> AddAsync(TEntity entity);
         Task<bool> UpdateAsync(TEntity entity);
         Task<bool> DeleteAsync(int id);
+        Task<DbTransactionContext> BeginTransactionAsync();
     }
 }

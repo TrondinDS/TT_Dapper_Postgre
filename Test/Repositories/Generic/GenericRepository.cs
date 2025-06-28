@@ -111,5 +111,12 @@ namespace Test.Repositories.Generic
             var affected = await conn.ExecuteAsync(sql, new { Id = id });
             return affected > 0;
         }
+
+        public async Task<DbTransactionContext> BeginTransactionAsync()
+        {
+            var connection = await _connectionFactory.CreateOpenConnectionAsync();
+            var transaction = connection.BeginTransaction();
+            return new DbTransactionContext(connection, transaction);
+        }
     }
 }

@@ -136,18 +136,19 @@ namespace Test1.DB.Repositories
                     return false;
                 }
 
-                var count = await conn.ExecuteScalarAsync<int>(
-                    "SELECT COUNT(*) FROM Employee WHERE DepartmentId = @DepartmentId",
-                    new { DepartmentId = departmentId.Value },
-                    trx);
+                // Убраны за ненадобностью
+                //var count = await conn.ExecuteScalarAsync<int>(
+                //    "SELECT COUNT(*) FROM Employee WHERE DepartmentId = @DepartmentId",
+                //    new { DepartmentId = departmentId.Value },
+                //    trx);
 
-                if (count == 0)
-                {
-                    await conn.ExecuteAsync(
-                        "DELETE FROM Department WHERE Id = @DepartmentId",
-                        new { DepartmentId = departmentId.Value },
-                        trx);
-                }
+                //if (count == 0)
+                //{
+                //    await conn.ExecuteAsync(
+                //        "DELETE FROM Department WHERE Id = @DepartmentId",
+                //        new { DepartmentId = departmentId.Value },
+                //        trx);
+                //}
 
                 trx.Commit();
                 return true;

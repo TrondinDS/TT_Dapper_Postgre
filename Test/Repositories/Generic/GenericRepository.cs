@@ -60,6 +60,7 @@ namespace Test.Repositories.Generic
             var props = typeof(TEntity)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => !string.Equals(p.Name, KeyName, StringComparison.OrdinalIgnoreCase))
+                .Where(p => p.PropertyType.IsValueType || p.PropertyType == typeof(string))
                 .ToArray();
 
             var columns = string.Join(", ", props.Select(p => p.Name));
@@ -84,6 +85,7 @@ namespace Test.Repositories.Generic
             var props = typeof(TEntity)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => !string.Equals(p.Name, KeyName, StringComparison.OrdinalIgnoreCase))
+                .Where(p => p.PropertyType.IsValueType || p.PropertyType == typeof(string))
                 .ToArray();
 
             var setClause = string.Join(", ", props.Select(p =>

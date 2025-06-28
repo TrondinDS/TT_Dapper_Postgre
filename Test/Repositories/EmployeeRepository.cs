@@ -1,28 +1,114 @@
 ﻿using Dapper;
 using System.Data;
+using System.Threading.Tasks;
 using Test.DB.Models;
+using Test.Repositories.Generic;
 using Test.Repositories.Interfaces;
 using Test1.DB.DbConnectionFactory;
 using Test1.DB.Models;
 
-namespace Test1.DB.Repositories
+namespace Test.Repositories
 {
-    public class EmployeeRepository : IEmployeeRepository
+    public class EmployeeRepository : GenericRepository<Employee>, IEmployeeRepository
     {
-        private readonly IDbConnectionFactory _connectionFactory;
+        public EmployeeRepository(IDbConnectionFactory factory) : base(factory) { }
 
-        public EmployeeRepository(IDbConnectionFactory connectionFactory)
+        protected override string TableName => "Employee";
+        protected override string KeyName => "Id";
+
+        // Методы проверки для добавления:
+        public async Task<bool> EnsureCompanyExistsAsync(int companyId, IDbConnection conn, IDbTransaction trx)
         {
-            _connectionFactory = connectionFactory;
+            const string checkCompanySql = "SELECT * FROM Company WHERE Id = @Id";
+            return await conn.ExecuteScalarAsync<bool>(checkCompanySql, new { Id = companyId }, trx);
         }
 
-        public async Task<int> AddEmployeeAsync(Employee employee)
+        public async Task<bool> EnsureDepartmentExistsAsync(int departmentId, IDbConnection conn, IDbTransaction trx)
+        {
+            const string checkDepartmentSql = "SELECT * FROM Department WHERE Id = @Id";
+            return await conn.ExecuteScalarAsync<bool>(checkDepartmentSql, new { Id = departmentId }, trx);
+        }
+
+        public async Task<bool> EnsurePassportUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
         {
             const string findPassportSql = @"
                 SELECT EmployeeId FROM Passport
                 WHERE Number = @Number AND Type = @Type;
             ";
 
+            var existingPassport = await conn.ExecuteScalarAsync<int?>(
+                    findPassportSql,
+                    new { employee.Passport.Number, employee.Passport.Type },
+                    trx
+            );
+
+            if (existingPassport.HasValue)
+                return false;
+
+            return true;
+        }
+
+        public async Task<bool> EnsurePhoneUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPhoneSql = @"
+                SELECT Id FROM Employee
+                WHERE Phone = @Phone;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPhoneSql,
+                new { employee.Phone },
+                trx
+            );
+
+            return !existingEmployeeId.HasValue;
+        }
+
+        public async Task<bool> EnsurePassportUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPassportSql = @"
+                SELECT EmployeeId FROM Passport
+                WHERE Number = @Number AND Type = @Type;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPassportSql,
+                new { employee.Passport.Number, employee.Passport.Type },
+                trx
+            );
+
+            // Если ничего не найдено паспорт уникален
+            if (!existingEmployeeId.HasValue)
+                return true;
+
+            // Если паспорт текущего сотрудника то нормас
+            return existingEmployeeId.Value == employee.Id;
+        }
+
+        public async Task<bool> EnsurePhoneUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPhoneSql = @"
+                SELECT Id FROM Employee
+                WHERE Phone = @Phone;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPhoneSql,
+                new { employee.Phone },
+                trx
+            );
+
+            // Если такого телефона нет — значит уникальный
+            if (!existingEmployeeId.HasValue)
+                return true;
+
+            // Если найденный номер принадлежит текущему сотруднику — не конфликтует
+            return existingEmployeeId.Value == employee.Id;
+        }
+
+        // Метод добавления:
+        public async Task<int> AddAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
             const string insertEmployeeSql = @"
                 INSERT INTO Employee (Name, Surname, Phone, CompanyId, DepartmentId)
                 VALUES (@Name, @Surname, @Phone, @CompanyId, @DepartmentId)
@@ -34,90 +120,37 @@ namespace Test1.DB.Repositories
                 VALUES (@EmployeeId, @Type, @Number);
             ";
 
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            using var trx = conn.BeginTransaction();
+            var employeeId = await conn.ExecuteScalarAsync<int>(
+                insertEmployeeSql,
+                new
+                {
+                    employee.Name,
+                    employee.Surname,
+                    employee.Phone,
+                    employee.CompanyId,
+                    employee.DepartmentId
+                },
+                trx
+            );
 
-            try
-            {
-                if(employee.CompanyId == null)
-                    throw new InvalidOperationException("Отсутвует id компания.");
+            await conn.ExecuteAsync(
+                insertPassportSql,
+                new
+                {
+                    EmployeeId = employeeId,
+                    employee.Passport.Type,
+                    employee.Passport.Number
+                },
+                trx
+            );
 
-                await EnsureCompanyExistsAsync((int)employee.CompanyId, conn, trx);
-
-                if (employee.DepartmentId == null)
-                    throw new InvalidOperationException("Отсутвует id депортамента.");
-
-                await EnsureDepartmentExistsAsync((int)employee.DepartmentId, conn, trx);
-
-                var employeeId = await conn.ExecuteScalarAsync<int>(
-                    insertEmployeeSql,
-                    new
-                    {
-                        employee.Name,
-                        employee.Surname,
-                        employee.Phone,
-                        employee.CompanyId,
-                        employee.DepartmentId
-                    },
-                    trx
-                );
-
-                var existingPassport = await conn.ExecuteScalarAsync<int?>(
-                    findPassportSql,
-                    new { employee.Passport.Number, employee.Passport.Type },
-                    trx
-                );
-
-                if (existingPassport.HasValue)
-                    throw new InvalidOperationException("Такой паспорт уже зарегистрирован.");
-
-                await conn.ExecuteAsync(
-                    insertPassportSql,
-                    new
-                    {
-                        EmployeeId = employeeId,
-                        employee.Passport.Type,
-                        employee.Passport.Number
-                    },
-                    trx
-                );
-
-                trx.Commit();
-                return employeeId;
-            }
-            catch
-            {
-                trx.Rollback();
-                throw;
-            }
+            return employeeId;
         }
 
-        private async Task EnsureCompanyExistsAsync(int companyId, IDbConnection conn, IDbTransaction trx)
+        // Метод удаления:
+        public async Task<int?> DeleteAsync(int Id, IDbConnection conn, IDbTransaction trx)
         {
-            const string checkCompanySql = "SELECT * FROM Company WHERE Id = @Id";
-
-            var exists = await conn.ExecuteScalarAsync<bool>(checkCompanySql, new { Id = companyId }, trx);
-            if (!exists)
-                throw new InvalidOperationException($"Компания с Id = {companyId} не найдена.");
-        }
-
-        private async Task EnsureDepartmentExistsAsync(int departmentId, IDbConnection conn, IDbTransaction trx)
-        {
-            const string checkDepartmentSql = "SELECT * FROM Department WHERE Id = @Id";
-
-            var exists = await conn.ExecuteScalarAsync<bool>(checkDepartmentSql, new { Id = departmentId }, trx);
-            if (!exists)
-                throw new InvalidOperationException($"Отдел с Id = {departmentId} не найден.");
-        }
-
-        public async Task<bool> DeleteEmployeeAsync(int employeeId)
-        {
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            using var trx = conn.BeginTransaction();
-
-            try
-            {
-                var sql = @"
+            var sql = @"
                     WITH deleted_employee AS (
                         DELETE FROM Employee
                         WHERE Id = @Id
@@ -127,194 +160,13 @@ namespace Test1.DB.Repositories
                         DELETE FROM Passport WHERE EmployeeId = @Id
                     )
                     SELECT DepartmentId FROM deleted_employee;
-                ";
-
-                var departmentId = await conn.ExecuteScalarAsync<int?>(sql, new { Id = employeeId }, trx);
-                if (departmentId == null)
-                {
-                    trx.Rollback();
-                    return false;
-                }
-
-                // Убраны за ненадобностью
-                //var count = await conn.ExecuteScalarAsync<int>(
-                //    "SELECT COUNT(*) FROM Employee WHERE DepartmentId = @DepartmentId",
-                //    new { DepartmentId = departmentId.Value },
-                //    trx);
-
-                //if (count == 0)
-                //{
-                //    await conn.ExecuteAsync(
-                //        "DELETE FROM Department WHERE Id = @DepartmentId",
-                //        new { DepartmentId = departmentId.Value },
-                //        trx);
-                //}
-
-                trx.Commit();
-                return true;
-            }
-            catch
-            {
-                trx.Rollback();
-                throw;
-            }
-        }
-
-        public async Task<IEnumerable<Employee>> GetEmployeesByCompanyIdAsync(int companyId)
-        {
-            var sql = @"
-                SELECT e.*, 
-                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId
-                WHERE e.CompanyId = @CompanyId;
             ";
 
-            return await QueryEmployeesWithCompanyAsync(sql, new { CompanyId = companyId });
+            return await conn.ExecuteScalarAsync<int?>(sql, new { Id }, trx);
         }
 
-        public async Task<IEnumerable<Employee>> GetEmployeesByCompanyNameAsync(string companyName)
-        {
-            var sql = @"
-                SELECT e.*, 
-                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId
-                WHERE c.Name ILIKE @CompanyName;
-            ";
-
-            return await QueryEmployeesWithCompanyAsync(sql, new
-            {
-                CompanyName = $"%{companyName}%"
-            });
-        }
-
-        public async Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(int departmentId)
-        {
-            var sql = @"
-                SELECT e.*, 
-                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId
-                WHERE e.DepartmentId = @DepartmentId;
-            ";
-
-            return await QueryEmployeesWithCompanyAsync(sql, new { DepartmentId = departmentId });
-        }
-
-        public async Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(string departmentName)
-        {
-            var sql = @"
-                SELECT e.*, 
-                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId
-                WHERE d.Name ILIKE @DepartmentName;
-            ";
-
-            return await QueryEmployeesWithCompanyAsync(sql, new
-            {
-                DepartmentName = $"%{departmentName}%"
-            });
-        }
-
-        public async Task<Employee?> GetByIdAsync(int id)
-        {
-            var sql = @"
-                SELECT e.*, p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId
-                WHERE e.Id = @Id;
-            ";
-
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            var result = await conn.QueryAsync<Employee, Passport, Department, Company, Employee>(
-                sql,
-                (e, p, d, c) =>
-                {
-                    e.Passport = p;
-                    e.Department = d;
-                    e.Company = c;
-                    return e;
-                },
-                new { Id = id },
-                splitOn: "PassportEmployeeId,Id,Id"
-            );
-
-            return result.FirstOrDefault();
-        }
-
-        public async Task<IEnumerable<Employee>> GetAllEmployeesAsync()
-        {
-            var sql = @"
-                SELECT e.*, 
-                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
-                       d.Id, d.Name, d.Phone,
-                       c.Id, c.Name
-                FROM Employee e
-                JOIN Passport p ON p.EmployeeId = e.Id
-                JOIN Department d ON d.Id = e.DepartmentId
-                JOIN Company c ON c.Id = e.CompanyId;
-            ";
-
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            var result = await conn.QueryAsync<Employee, Passport, Department, Company, Employee>(
-                sql,
-                (e, p, d, c) =>
-                {
-                    e.Passport = p;
-                    e.Department = d;
-                    e.Company = c;
-                    return e;
-                },
-                splitOn: "PassportEmployeeId,Id,Id"
-            );
-
-            return result;
-        }
-
-        private async Task<IEnumerable<Employee>> QueryEmployeesWithCompanyAsync(
-            string sql,
-            object parameters)
-        {
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            var result = await conn.QueryAsync<Employee, Passport, Department, Company, Employee>(
-                sql,
-                (e, p, d, c) =>
-                {
-                    e.Passport = p;
-                    e.Department = d;
-                    e.Company = c;
-                    return e;
-                },
-                parameters,
-                splitOn: "PassportEmployeeId,Id,Id"
-            );
-
-            return result;
-        }
-
-        public async Task<bool> UpdateEmployeeAsync(Employee employee)
+        // Метод обновления:
+        public async Task UpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
         {
             const string updateEmployeeSql = @"
                 UPDATE Employee SET
@@ -333,39 +185,178 @@ namespace Test1.DB.Repositories
                 WHERE EmployeeId = @EmployeeId;
             ";
 
-            using var conn = await _connectionFactory.CreateOpenConnectionAsync();
-            using var trx = conn.BeginTransaction();
-
-            try
+            await conn.ExecuteAsync(updateEmployeeSql, new
             {
-                await conn.ExecuteAsync(updateEmployeeSql, new
+                employee.Name,
+                employee.Surname,
+                employee.Phone,
+                employee.CompanyId,
+                employee.DepartmentId,
+                employee.Id
+            }, trx);
+
+            if (employee.Passport is not null)
+            {
+                await conn.ExecuteAsync(updatePassportSql, new
                 {
-                    employee.Name,
-                    employee.Surname,
-                    employee.Phone,
-                    employee.CompanyId,
-                    employee.DepartmentId,
-                    employee.Id
+                    employee.Passport.Type,
+                    employee.Passport.Number,
+                    EmployeeId = employee.Id
                 }, trx);
-
-                if (employee.Passport is not null)
-                {
-                    await conn.ExecuteAsync(updatePassportSql, new
-                    {
-                        employee.Passport.Type,
-                        employee.Passport.Number,
-                        EmployeeId = employee.Id
-                    }, trx);
-                }
-
-                trx.Commit();
-                return true;
             }
-            catch
+        }
+
+        // Метод возвращения всех:
+        public new async Task<IEnumerable<Employee>> GetAllAsync(IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId;
+            ";
+
+            return await QueryEmployeesWithCompanyAsync(sql, parameters: null, conn, trx);
+        }
+
+        // Метод возвращения по Id:
+        public new async Task<Employee> GetByIdAsync(int Id, IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId
+                WHERE e.Id = @Id;
+            ";
+
+            var result = await QueryEmployeesWithCompanyAsync(sql, new { Id }, conn, trx);
+            return result.FirstOrDefault();
+        }
+
+        // Метод возвращения работников компании по Id департамента:
+        public async Task<IEnumerable<Employee>> GetEmployeesByCompanyIdAsync(int companyId, IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId
+                WHERE e.CompanyId = @CompanyId;
+            ";
+
+            return await QueryEmployeesWithCompanyAsync(sql, new { CompanyId = companyId }, conn, trx);
+        }
+
+        // Метод возвращения работников компании по Названию компании:
+        public async Task<IEnumerable<Employee>> GetEmployeesByCompanyNameAsync(string companyName, IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId
+                WHERE c.Name ILIKE @CompanyName;
+            ";
+
+            return await QueryEmployeesWithCompanyAsync(sql, new
             {
-                trx.Rollback();
-                return false;
-            }
+                CompanyName = $"%{companyName}%"
+            }, conn, trx);
+        }
+
+        // Метод возвращения работников департамента по Id департамента:
+        public async Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(int departmentId, IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId
+                WHERE e.DepartmentId = @DepartmentId;
+            ";
+
+            return await QueryEmployeesWithCompanyAsync(sql, new { DepartmentId = departmentId }, conn, trx);
+        }
+
+        // Метод возвращения работников департамента по Названию департамента:
+        public async Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(string departmentName, IDbConnection conn, IDbTransaction trx)
+        {
+            var sql = @"
+                SELECT e.*, 
+                       p.EmployeeId AS PassportEmployeeId, p.Type, p.Number,
+                       d.Id, d.Name, d.Phone,
+                       c.Id, c.Name
+                FROM Employee e
+                JOIN Passport p ON p.EmployeeId = e.Id
+                JOIN Department d ON d.Id = e.DepartmentId
+                JOIN Company c ON c.Id = e.CompanyId
+                WHERE d.Name ILIKE @DepartmentName;
+            ";
+
+            return await QueryEmployeesWithCompanyAsync(sql, new
+            {
+                DepartmentName = $"%{departmentName}%"
+            }, conn, trx);
+        }
+
+        // Метод вызова получений:
+        private async Task<IEnumerable<Employee>> QueryEmployeesWithCompanyAsync(
+            string sql,
+            object parameters,
+            IDbConnection conn,
+            IDbTransaction trx)
+        {
+            var result = await conn.QueryAsync<Employee, Passport, Department, Company, Employee>(
+                sql,
+                (e, p, d, c) =>
+                {
+                    e.Passport = p;
+                    e.Department = d;
+                    e.Company = c;
+                    return e;
+                },
+                param: parameters,
+                transaction: trx,
+                splitOn: "PassportEmployeeId,Id,Id"
+            );
+
+            return result;
+        }
+
+
+        private new async Task<int> AddAsync(Employee entity)
+        {
+            return await base.AddAsync(entity);
+        }
+        private new async Task<bool> DeleteAsync(int id)
+        {
+            return await base.DeleteAsync(id);
+        }
+
+        private new async Task<bool> UpdateAsync(Employee entity)
+        {
+            return await base.UpdateAsync(entity);
         }
     }
 }

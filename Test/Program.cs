@@ -5,7 +5,6 @@ using Test.Repositories.Interfaces;
 using Test.Services;
 using Test.Services.Interfaces;
 using Test1.DB.DbConnectionFactory;
-using Test1.DB.Repositories;
 
 namespace Test
 {
@@ -33,12 +32,10 @@ namespace Test
             builder.Services.AddScoped<ICompanyRepository, CompanyRepository>();
             builder.Services.AddScoped<IDepartmentRepository, DepartmentRepository>();
             builder.Services.AddScoped<IEmployeeRepository, EmployeeRepository>();
-            builder.Services.AddScoped<ITempER, TempER>();
 
             builder.Services.AddScoped<ICompanyService, CompanyService>();
             builder.Services.AddScoped<IDepartmentService, DepartmentService>();
-            //builder.Services.AddScoped<IEmployeeService, EmployeeService>();
-            builder.Services.AddScoped<IEmployeeService, TempES>();
+            builder.Services.AddScoped<IEmployeeService, EmployeeService>();
 
 
             builder.Services.AddAutoMapper(typeof(MapModel));

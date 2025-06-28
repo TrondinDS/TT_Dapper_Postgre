@@ -1,17 +1,33 @@
-﻿using Test1.DB.Models;
+﻿using System.Data;
+using Test.Repositories.Generic;
+using Test1.DB.Models;
 
 namespace Test.Repositories.Interfaces
 {
     public interface IEmployeeRepository
     {
-        Task<int> AddEmployeeAsync(Employee employee);
-        Task<bool> DeleteEmployeeAsync(int id);
-        Task<IEnumerable<Employee>> GetEmployeesByCompanyIdAsync(int companyId);
-        Task<IEnumerable<Employee>> GetEmployeesByCompanyNameAsync(string companyName);
-        Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(int departmentId);
-        Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(string departmentName);
-        Task<IEnumerable<Employee>> GetAllEmployeesAsync();
-        Task<Employee?> GetByIdAsync(int id);
-        Task<bool> UpdateEmployeeAsync(Employee employee);
+        Task<int> AddAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsureCompanyExistsAsync(int companyId, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsureDepartmentExistsAsync(int departmentId, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePassportUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePhoneUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePassportUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePhoneUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+
+        Task<int?> DeleteAsync(int Id, IDbConnection conn, IDbTransaction trx);
+
+        Task UpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+
+        Task<IEnumerable<Employee>> GetAllAsync(IDbConnection conn, IDbTransaction trx);
+        Task<Employee> GetByIdAsync(int Id, IDbConnection conn, IDbTransaction trx);
+
+        Task<IEnumerable<Employee>> GetEmployeesByCompanyIdAsync(int companyId, IDbConnection conn, IDbTransaction trx);
+        Task<IEnumerable<Employee>> GetEmployeesByCompanyNameAsync(string companyName, IDbConnection conn, IDbTransaction trx);
+
+        Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(int departmentId, IDbConnection conn, IDbTransaction trx);
+        Task<IEnumerable<Employee>> GetEmployeesByDepartmentAsync(string departmentName, IDbConnection conn, IDbTransaction trx);
+
+        Task<DbTransactionContext> BeginTransactionAsync();
+
     }
 }

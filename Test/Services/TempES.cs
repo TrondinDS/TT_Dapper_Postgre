@@ -109,27 +109,33 @@ namespace Test.Services
             try
             {
                 // Проверка уникальности паспорта
-                var isPassportUnique = await _employeeRepository.EnsurePassportUniqueForUpdateAsync(
-                    employee,
-                    trxContext.Connection,
-                    trxContext.Transaction
-                );
-
-                if (!isPassportUnique)
+                if (employee.Passport is not null)
                 {
-                    throw new InvalidOperationException("Такой паспорт уже зарегистрирован.");
+                    var isPassportUnique = await _employeeRepository.EnsurePassportUniqueForUpdateAsync(
+                        employee,
+                        trxContext.Connection,
+                        trxContext.Transaction
+                    );
+
+                    if (!isPassportUnique)
+                    {
+                        throw new InvalidOperationException("Такой паспорт уже зарегистрирован.");
+                    }
                 }
 
-                // Проверка уникальности телефона
-                var isPhoneUnique = await _employeeRepository.EnsurePhoneUniqueForUpdateAsync(
-                    employee,
-                    trxContext.Connection,
-                    trxContext.Transaction
-                );
-
-                if (!isPhoneUnique)
+                if (employee.Phone is not null)
                 {
-                    throw new InvalidOperationException("Данный номер уже зарегистрирован.");
+                    // Проверка уникальности телефона
+                    var isPhoneUnique = await _employeeRepository.EnsurePhoneUniqueForUpdateAsync(
+                        employee,
+                        trxContext.Connection,
+                        trxContext.Transaction
+                    );
+
+                    if (!isPhoneUnique)
+                    {
+                        throw new InvalidOperationException("Данный номер уже зарегистрирован.");
+                    }
                 }
 
                 // Выполняем обновление, если валидации прошли

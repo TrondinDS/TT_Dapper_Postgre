@@ -48,6 +48,64 @@ namespace Test.Repositories
             return true;
         }
 
+        public async Task<bool> EnsurePhoneUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPhoneSql = @"
+                SELECT Id FROM Employee
+                WHERE Phone = @Phone;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPhoneSql,
+                new { employee.Phone },
+                trx
+            );
+
+            return !existingEmployeeId.HasValue;
+        }
+
+        public async Task<bool> EnsurePassportUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPassportSql = @"
+                SELECT EmployeeId FROM Passport
+                WHERE Number = @Number AND Type = @Type;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPassportSql,
+                new { employee.Passport.Number, employee.Passport.Type },
+                trx
+            );
+
+            // Если ничего не найдено паспорт уникален
+            if (!existingEmployeeId.HasValue)
+                return true;
+
+            // Если паспорт текущего сотрудника то нормас
+            return existingEmployeeId.Value == employee.Id;
+        }
+
+        public async Task<bool> EnsurePhoneUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
+        {
+            const string findPhoneSql = @"
+                SELECT Id FROM Employee
+                WHERE Phone = @Phone;
+            ";
+
+            var existingEmployeeId = await conn.ExecuteScalarAsync<int?>(
+                findPhoneSql,
+                new { employee.Phone },
+                trx
+            );
+
+            // Если такого телефона нет — значит уникальный
+            if (!existingEmployeeId.HasValue)
+                return true;
+
+            // Если найденный номер принадлежит текущему сотруднику — не конфликтует
+            return existingEmployeeId.Value == employee.Id;
+        }
+
         // Метод добавления:
         public async Task<int> AddAsync(Employee employee, IDbConnection conn, IDbTransaction trx)
         {

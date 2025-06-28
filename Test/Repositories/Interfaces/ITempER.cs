@@ -10,6 +10,9 @@ namespace Test.Repositories.Interfaces
         Task<bool> EnsureCompanyExistsAsync(int companyId, IDbConnection conn, IDbTransaction trx);
         Task<bool> EnsureDepartmentExistsAsync(int departmentId, IDbConnection conn, IDbTransaction trx);
         Task<bool> EnsurePassportUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePhoneUniqueAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePassportUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
+        Task<bool> EnsurePhoneUniqueForUpdateAsync(Employee employee, IDbConnection conn, IDbTransaction trx);
 
         Task<int?> DeleteAsync(int Id, IDbConnection conn, IDbTransaction trx);
 

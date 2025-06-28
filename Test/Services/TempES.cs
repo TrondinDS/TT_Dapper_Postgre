@@ -49,6 +49,13 @@ namespace Test.Services
                 );
                 if (!exists) throw new InvalidOperationException("Такой паспорт уже зарегистрирован.");
 
+                exists = await _employeeRepository.EnsurePhoneUniqueAsync(
+                    employee,
+                    trxContext.Connection,
+                    trxContext.Transaction
+                );
+                if (!exists) throw new InvalidOperationException("Данный номер уже зарегистрирован.");
+
                 var result = await _employeeRepository.AddAsync(
                     employee,
                     trxContext.Connection,
@@ -101,6 +108,31 @@ namespace Test.Services
 
             try
             {
+                // Проверка уникальности паспорта
+                var isPassportUnique = await _employeeRepository.EnsurePassportUniqueForUpdateAsync(
+                    employee,
+                    trxContext.Connection,
+                    trxContext.Transaction
+                );
+
+                if (!isPassportUnique)
+                {
+                    throw new InvalidOperationException("Такой паспорт уже зарегистрирован.");
+                }
+
+                // Проверка уникальности телефона
+                var isPhoneUnique = await _employeeRepository.EnsurePhoneUniqueForUpdateAsync(
+                    employee,
+                    trxContext.Connection,
+                    trxContext.Transaction
+                );
+
+                if (!isPhoneUnique)
+                {
+                    throw new InvalidOperationException("Данный номер уже зарегистрирован.");
+                }
+
+                // Выполняем обновление, если валидации прошли
                 await _employeeRepository.UpdateAsync(
                     employee,
                     trxContext.Connection,

@@ -27,8 +27,23 @@ namespace Test.Controllers
         [HttpPut]
         public async Task<IActionResult> Update([FromBody] EmployeeUpdateDto employeeDto)
         {
-            var result = await _employeeService.UpdateEmployeeAsync(employeeDto);
-            return result ? Ok() : NotFound();
+            if (employeeDto is null)
+                return BadRequest("Некорректные входные данные.");
+
+            try
+            {
+                var result = await _employeeService.UpdateEmployeeAsync(employeeDto);
+
+                if (!result)
+                    return NotFound("Сотрудник не найден или данные не уникальны.");
+
+                return Ok("Сотрудник успешно обновлён.");
+            }
+            catch (Exception ex)
+            {
+                // Для продакшена лучше использовать логгер вместо возврата сообщения
+                return StatusCode(500, $"Ошибка сервера");
+            }
         }
 
         [HttpDelete("{id:int}")]
